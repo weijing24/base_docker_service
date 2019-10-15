@@ -1,0 +1,81 @@
+version: "3.4"
+services:
+
+  mysql:
+    image: mysql:5.7
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_bin
+    environment:
+      - MYSQL_DATABASE=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_ROOT_PASSWORD=zabbix
+    deploy: 
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+
+  zabbix-backend:
+    image: zabbix/zabbix-server-mysql:alpine-4.0.13
+    environment:
+      - DB_SERVER_HOST=mysql
+      - DB_SERVER_PORT=3306
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - MYSQL_DATABASE=zabbix
+      - ZBX_TIMEOUT=20
+      - ZBX_CACHESIZE=128M
+      - ZBX_STARTDISCOVERERS=10
+      - ZBX_STARTPINGERS=10
+      - ZBX_STARTPOLLERS=20
+      - ZBX_VALUECACHESIZE=64M
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/docker/zabbix/alertscripts:/usr/lib/zabbix/alertscripts
+      - /var/docker/zabbix/externalscripts:/usr/lib/zabbix/externalscripts
+
+  zabbix-frontend:
+    image: zabbix/zabbix-web-nginx-mysql:alpine-4.0.13
+    environment:
+      - DB_SERVER_HOST=mysql
+      - ZBX_SERVER_HOST=zabbix-backend
+      - DB_SERVER_ROOT_USER=zabbix
+      - MYSQL_USER=zabbix
+      - MYSQL_PASSWORD=zabbix
+      - PHP_TZ=Asia/Shanghai
+    ports:
+      - 80:80
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent:alpine-latest
+    environment:
+      - ZBX_DEBUGLEVEL=3
+      - ZBX_METADATAITEM=system.uname
+      - ZBX_HOSTNAME=zabbix-backend
+      - ZBX_SERVER_HOST=zabbix-backend
+      - ZBX_SERVER_PORT=10051
+      # - ZBX_PASSIVE_ALLOW=false
+      # - ZBX_ACTIVE_ALLOW=true
+      # - ZBX_ACTIVESERVERS=zabbix-backend
+      - ZBX_TIMEOUT=20
+      - ZBX_REFRESHACTIVECHECKS=60
+      - ZBX_UNSAFEUSERPARAMETERS=1
+      # - MYSQL_PASSWORD=zabbix
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+    # volumes:
+      # - ./zabbix_agentd.d:/etc/zabbix/zabbix_agentd.d
